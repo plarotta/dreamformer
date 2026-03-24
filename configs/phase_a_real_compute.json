@@ -10,6 +10,10 @@
     "key_copies": 4,
     "query_gap_min": 24
   },
+  "eval_task_overrides": {
+    "key_copies": 1,
+    "query_gap_min": 64
+  },
   "model_overrides": {
     "vocab_size": 256,
     "max_seq_len": 192,
