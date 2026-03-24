@@ -1,0 +1,42 @@
+{
+  "run_name": "char_lm_real_compute",
+  "variant": "full_prioritized",
+  "task": "char_lm",
+  "eval_task": "char_lm",
+  "corpus_path": "data/train.txt",
+  "eval_corpus_path": "data/valid.txt",
+  "seed": 7,
+  "device": "cuda",
+  "output_dir": "artifacts/runs",
+  "model_overrides": {
+    "vocab_size": 320,
+    "max_seq_len": 512,
+    "d_model": 384,
+    "n_heads": 8,
+    "n_layers": 10,
+    "ffn_dim": 1024,
+    "dropout": 0.1,
+    "memory_layer_index": 8,
+    "num_stm_slots": 1024,
+    "memory_key_dim": 192,
+    "memory_value_dim": 192,
+    "replay_capacity": 200000,
+    "stm_top_k": 8
+  },
+  "train_overrides": {
+    "steps": 80000,
+    "batch_size": 64,
+    "seq_len": 384,
+    "learning_rate": 0.0002,
+    "weight_decay": 0.01,
+    "grad_clip_norm": 1.0,
+    "log_every": 50,
+    "eval_every": 1000,
+    "checkpoint_every": 2000,
+    "nrem_every": 20,
+    "replay_beta_start": 0.4,
+    "replay_beta_end": 1.0,
+    "eval_batches": 64,
+    "amp": true
+  }
+}

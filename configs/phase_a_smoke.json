@@ -1,0 +1,33 @@
+{
+  "run_name": "phase_a_smoke",
+  "variant": "full_prioritized",
+  "task": "passkey",
+  "eval_task": "passkey",
+  "seed": 42,
+  "device": "auto",
+  "output_dir": "artifacts/runs",
+  "model_overrides": {
+    "vocab_size": 128,
+    "max_seq_len": 64,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_layers": 3,
+    "ffn_dim": 128,
+    "memory_layer_index": 2,
+    "num_stm_slots": 64,
+    "memory_key_dim": 32,
+    "memory_value_dim": 32,
+    "replay_capacity": 1024
+  },
+  "train_overrides": {
+    "steps": 80,
+    "batch_size": 16,
+    "seq_len": 40,
+    "learning_rate": 0.001,
+    "log_every": 10,
+    "eval_every": 20,
+    "checkpoint_every": 40,
+    "nrem_every": 5,
+    "eval_batches": 8
+  }
+}

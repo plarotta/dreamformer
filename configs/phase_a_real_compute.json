@@ -1,0 +1,42 @@
+{
+  "run_name": "phase_a_real_compute",
+  "variant": "full_prioritized",
+  "task": "needle",
+  "eval_task": "needle",
+  "seed": 1234,
+  "device": "cuda",
+  "output_dir": "artifacts/runs",
+  "model_overrides": {
+    "vocab_size": 256,
+    "max_seq_len": 256,
+    "d_model": 256,
+    "n_heads": 8,
+    "n_layers": 8,
+    "ffn_dim": 512,
+    "dropout": 0.1,
+    "memory_layer_index": 6,
+    "num_stm_slots": 512,
+    "memory_key_dim": 128,
+    "memory_value_dim": 128,
+    "replay_capacity": 50000,
+    "stm_top_k": 8,
+    "stm_update_threshold": 0.92,
+    "nrem_threshold": 0.55
+  },
+  "train_overrides": {
+    "steps": 20000,
+    "batch_size": 128,
+    "seq_len": 192,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.01,
+    "grad_clip_norm": 1.0,
+    "log_every": 50,
+    "eval_every": 500,
+    "checkpoint_every": 1000,
+    "nrem_every": 10,
+    "replay_beta_start": 0.4,
+    "replay_beta_end": 1.0,
+    "eval_batches": 64,
+    "amp": true
+  }
+}

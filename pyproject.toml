@@ -1,0 +1,21 @@
+[project]
+name = "dreamformer"
+version = "0.1.0"
+description = "Dual-memory transformer research prototype"
+authors = [
+    { name = "Pedro La Rotta", email = "plarottaone2@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.2.6",
+    "torch>=2.11.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.2,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
