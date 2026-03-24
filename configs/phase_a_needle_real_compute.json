@@ -7,7 +7,8 @@
   "device": "cuda",
   "output_dir": "artifacts/runs",
   "task_overrides": {
-    "needle_copies": 3
+    "needle_copies": 3,
+    "query_gap_min": 24
   },
   "model_overrides": {
     "vocab_size": 256,

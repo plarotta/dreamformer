@@ -39,6 +39,21 @@ def test_passkey_batch_supports_repeated_key_copies() -> None:
     assert torch.equal(key_marks, torch.full_like(key_marks, 3))
 
 
+def test_passkey_batch_keeps_key_copies_away_from_query() -> None:
+    batch = generate_passkey_batch(
+        batch_size=2,
+        seq_len=32,
+        vocab_size=64,
+        device=torch.device("cpu"),
+        key_copies=4,
+        query_gap_min=10,
+    )
+    assert batch.query_positions is not None
+    query_pos = int(batch.query_positions[0].item())
+    last_key_pos = (batch.input_ids[0] == KEY_MARK).nonzero().max().item()
+    assert query_pos - (last_key_pos + 1) >= 10
+
+
 def test_needle_batch_supports_multiple_needles() -> None:
     batch = generate_needle_batch(
         batch_size=2,
@@ -50,6 +65,22 @@ def test_needle_batch_supports_multiple_needles() -> None:
     assert batch.answers is not None
     answer_matches = (batch.input_ids == batch.answers.unsqueeze(1)).sum(dim=1)
     assert torch.all(answer_matches >= 4)
+
+
+def test_needle_batch_keeps_needles_away_from_query() -> None:
+    batch = generate_needle_batch(
+        batch_size=2,
+        seq_len=32,
+        vocab_size=64,
+        device=torch.device("cpu"),
+        needle_copies=3,
+        query_gap_min=10,
+    )
+    assert batch.query_positions is not None
+    assert batch.answers is not None
+    query_pos = int(batch.query_positions[0].item())
+    matches = (batch.input_ids[0, :query_pos] == batch.answers[0]).nonzero().flatten()
+    assert int(matches.max().item()) <= query_pos - 10 - 1
 
 
 def test_query_cross_entropy_matches_answers() -> None:

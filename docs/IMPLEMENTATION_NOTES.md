@@ -71,6 +71,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: on synthetic retrieval tasks, the critical answer token appears at a single query position, so sequence-average CE provides very weak direct signal for retrieval behavior.
    - Fix: add weighted auxiliary query-position cross-entropy, expose `query_loss_weight` in training configs, and support denser synthetic curricula via `task_overrides` such as repeated passkey and needle copies.
 
+11. Synthetic retrieval shortcut near the query:
+   - Cause: repeated passkey copies or repeated needle placements could land too close to the query token, allowing local-context solutions that do not require long-range retrieval.
+   - Fix: add `query_gap_min` task overrides to keep supporting evidence a configurable distance away from the query in both passkey and needle generators.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

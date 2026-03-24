@@ -113,9 +113,11 @@ Each phase object:
 
 - `passkey`:
   - `key_copies`
+  - `query_gap_min`
   - `answer_vocab_size`
   - `distractor_vocab_size`
 - `needle`:
   - `needle_copies`
+  - `query_gap_min`
   - `answer_vocab_size`
   - `distractor_vocab_size`
