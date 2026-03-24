@@ -67,6 +67,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: even with healthier gate values, raw STM retrieval norms remained much larger than LTM retrieval norms, so the fused memory path was still dominated by STM.
    - Fix: optional per-source memory-read normalization, separate learned positive fusion scales for STM and LTM, tighter NREM threshold defaults for real-compute configs, and raw-vs-scaled memory diagnostics in logs.
 
+10. Retrieval supervision too dilute under pure next-token loss:
+   - Cause: on synthetic retrieval tasks, the critical answer token appears at a single query position, so sequence-average CE provides very weak direct signal for retrieval behavior.
+   - Fix: add weighted auxiliary query-position cross-entropy, expose `query_loss_weight` in training configs, and support denser synthetic curricula via `task_overrides` such as repeated passkey and needle copies.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

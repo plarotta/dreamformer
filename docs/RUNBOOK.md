@@ -47,7 +47,7 @@ Expected console logs during training:
 
 - `experiment_resolved ...`
 - `run_start ...`
-- periodic `train step=...` lines with loss, replay size, STM occupancy, gate value, raw/scaled STM and LTM read norms, fusion scales, NREM selections, steps/sec, and ETA
+- periodic `train step=...` lines with total loss, model loss, query loss, replay size, STM occupancy, gate value, raw/scaled STM and LTM read norms, fusion scales, NREM selections, steps/sec, and ETA
 - periodic `eval step=...` lines
 - `checkpoint_saved ...`
 - `best_checkpoint_updated ...`
@@ -61,7 +61,7 @@ Example:
 uv run python scripts/run_experiment.py --config configs/phase_a_real_compute.json
 ```
 
-This config is now the safer first-stage real-compute curriculum (`passkey`, shorter context, lower LR, normalized memory fusion, and stricter consolidation).
+This config is now the safer first-stage real-compute curriculum (`passkey`, shorter context, lower LR, normalized memory fusion, stricter consolidation, repeated key exposures, and weighted query supervision).
 
 Harder retrieval follow-up:
 
@@ -126,6 +126,7 @@ uv run python scripts/report_results.py \
 - Confirm checkpoint cadence (`checkpoint_every`) is frequent enough for your cluster preemption policy.
 - Start with a short run (for example 100 to 500 steps) and inspect metrics for:
   - loss moving down
+  - `query_loss` and `eval_query_loss` moving down
   - `memory_gate_mean` not pinned at exactly 0 or 1 too early
   - `stm_read_norm` and `ltm_read_norm` staying in the same rough order of magnitude
   - `nrem_selection_rate` below saturation for long stretches of training

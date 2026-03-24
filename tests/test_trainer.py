@@ -138,6 +138,7 @@ def test_trainer_emits_console_progress(tmp_path: Path, capsys) -> None:
     assert "train step=" in captured.out
     assert "eval step=" in captured.out
     assert "run_complete" in captured.out
+    assert "query_loss=" in captured.out
 
 
 def test_trainer_fails_fast_on_nonfinite_loss(tmp_path: Path, capsys) -> None:
@@ -187,3 +188,35 @@ def test_trainer_fails_fast_on_nonfinite_loss(tmp_path: Path, capsys) -> None:
 
     captured = capsys.readouterr()
     assert "nonfinite_loss_detected" in captured.out
+
+
+def test_trainer_reports_query_loss_metrics(tmp_path: Path) -> None:
+    model_cfg = _tiny_model_config()
+    train_cfg = TrainingConfig(
+        steps=2,
+        batch_size=4,
+        seq_len=16,
+        learning_rate=1e-3,
+        log_every=1,
+        eval_every=2,
+        checkpoint_every=2,
+        nrem_every=1,
+        eval_batches=2,
+        query_loss_weight=2.0,
+        console_log=False,
+    )
+    trainer = Trainer(
+        model=DreamFormerModel(model_cfg),
+        model_config=model_cfg,
+        training_config=train_cfg,
+        device=torch.device("cpu"),
+        output_dir=tmp_path,
+    )
+    summary = trainer.train(
+        train_batch_fn=generate_passkey_batch,
+        eval_batch_fn=generate_passkey_batch,
+        run_name="queryloss",
+    )
+
+    assert "eval_query_loss" in summary
+    assert summary["eval_query_loss"] > 0.0

@@ -26,11 +26,28 @@ def make_training_config(overrides: dict[str, Any] | None = None) -> TrainingCon
     return TrainingConfig(**data)
 
 
-def make_task_fn(task: str, corpus_path: str | None = None) -> BatchFn:
+def make_task_fn(
+    task: str,
+    corpus_path: str | None = None,
+    task_overrides: dict[str, Any] | None = None,
+) -> BatchFn:
+    overrides = dict(task_overrides or {})
     if task == "passkey":
-        return generate_passkey_batch
+        return lambda batch_size, seq_len, vocab_size, device: generate_passkey_batch(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            vocab_size=vocab_size,
+            device=device,
+            **overrides,
+        )
     if task == "needle":
-        return generate_needle_batch
+        return lambda batch_size, seq_len, vocab_size, device: generate_needle_batch(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            vocab_size=vocab_size,
+            device=device,
+            **overrides,
+        )
     if task == "char_lm":
         if corpus_path is None:
             raise ValueError("task 'char_lm' requires 'corpus_path'")
@@ -54,6 +71,8 @@ def run_training_job(spec: dict[str, Any]) -> dict[str, Any]:
     resume_checkpoint = spec.get("resume_checkpoint")
     model_overrides = spec.get("model_overrides")
     train_overrides = spec.get("train_overrides")
+    task_overrides = spec.get("task_overrides")
+    eval_task_overrides = spec.get("eval_task_overrides", task_overrides)
     corpus_path = spec.get("corpus_path")
     eval_corpus_path = spec.get("eval_corpus_path", corpus_path)
 
@@ -65,8 +84,12 @@ def run_training_job(spec: dict[str, Any]) -> dict[str, Any]:
     model_config = apply_variant(model_config, variant)
     training_config = make_training_config(train_overrides)
 
-    train_fn = make_task_fn(task_name, corpus_path=corpus_path)
-    eval_fn = make_task_fn(eval_task_name, corpus_path=eval_corpus_path) if eval_task_name else None
+    train_fn = make_task_fn(task_name, corpus_path=corpus_path, task_overrides=task_overrides)
+    eval_fn = (
+        make_task_fn(eval_task_name, corpus_path=eval_corpus_path, task_overrides=eval_task_overrides)
+        if eval_task_name
+        else None
+    )
 
     model = DreamFormerModel(model_config)
     trainer = Trainer(
@@ -92,6 +115,8 @@ def run_training_job(spec: dict[str, Any]) -> dict[str, Any]:
         "training_config": asdict(training_config),
         "corpus_path": corpus_path,
         "eval_corpus_path": eval_corpus_path,
+        "task_overrides": task_overrides,
+        "eval_task_overrides": eval_task_overrides,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "resolved_config.json").write_text(

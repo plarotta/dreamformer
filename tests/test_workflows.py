@@ -9,6 +9,9 @@ def test_run_training_job_smoke(tmp_path: Path) -> None:
         "variant": "full_prioritized",
         "task": "passkey",
         "eval_task": "passkey",
+        "task_overrides": {
+            "key_copies": 3
+        },
         "seed": 123,
         "device": "cpu",
         "output_dir": str(tmp_path),
@@ -33,11 +36,13 @@ def test_run_training_job_smoke(tmp_path: Path) -> None:
             "eval_every": 4,
             "checkpoint_every": 4,
             "nrem_every": 2,
-            "eval_batches": 2
+            "eval_batches": 2,
+            "query_loss_weight": 2.0
         }
     }
     summary = run_training_job(spec)
     assert summary["final_step"] == 8
+    assert "eval_query_loss" in summary
     run_dir = tmp_path / "wf_smoke"
     assert (run_dir / "resolved_config.json").exists()
     assert (run_dir / "wf_smoke_summary.json").exists()

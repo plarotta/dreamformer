@@ -6,6 +6,9 @@
   "seed": 1234,
   "device": "cuda",
   "output_dir": "artifacts/runs",
+  "task_overrides": {
+    "key_copies": 4
+  },
   "model_overrides": {
     "vocab_size": 256,
     "max_seq_len": 192,
@@ -45,6 +48,7 @@
     "replay_beta_start": 0.4,
     "replay_beta_end": 1.0,
     "eval_batches": 64,
+    "query_loss_weight": 4.0,
     "amp": true
   }
 }

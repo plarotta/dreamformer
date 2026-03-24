@@ -42,6 +42,7 @@ def main() -> None:
     model_cfg = make_model_config(spec.get("model_overrides"))
     model_cfg = apply_variant(model_cfg, str(spec.get("variant", "full_prioritized")))
     base_train_cfg = make_training_config(spec.get("train_overrides"))
+    base_task_overrides = spec.get("task_overrides")
 
     model = DreamFormerModel(model_cfg)
     logger = ExperimentLogger()
@@ -63,14 +64,20 @@ def main() -> None:
         phase_steps = int(phase.get("steps", base_train_cfg.steps))
         corpus_path = phase.get("corpus_path", spec.get("corpus_path"))
         eval_corpus_path = phase.get("eval_corpus_path", corpus_path)
+        task_overrides = phase.get("task_overrides", base_task_overrides)
+        eval_task_overrides = phase.get("eval_task_overrides", task_overrides)
 
         phase_cfg = _phase_train_config(base_train_cfg, extra_steps=phase_steps, current_step=trainer.step)
         trainer.training_config = phase_cfg
-        train_fn = make_task_fn(task_name, corpus_path=corpus_path)
+        train_fn = make_task_fn(task_name, corpus_path=corpus_path, task_overrides=task_overrides)
         trainer.train(train_batch_fn=train_fn, eval_batch_fn=None, run_name=f"{run_name}_phase{phase_idx}")
 
         seen_tasks[task_name] = {
-            "eval_fn": make_task_fn(task_name, corpus_path=eval_corpus_path),
+            "eval_fn": make_task_fn(
+                task_name,
+                corpus_path=eval_corpus_path,
+                task_overrides=eval_task_overrides,
+            ),
             "corpus_path": eval_corpus_path,
         }
 

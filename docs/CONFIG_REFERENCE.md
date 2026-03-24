@@ -13,6 +13,8 @@ Required keys:
 Optional keys:
 
 - `eval_task`: defaults to `task`.
+- `task_overrides`: task-specific generation overrides for train batches.
+- `eval_task_overrides`: optional eval-only task overrides; defaults to `task_overrides`.
 - `seed`: default `42`.
 - `device`: `auto`, `cuda`, `mps`, or `cpu` (default `auto`).
 - `output_dir`: root output directory (default `artifacts/runs`).
@@ -45,6 +47,8 @@ Each phase object:
 - `steps`: number of steps to train in this phase.
 - `corpus_path`: optional (required for `char_lm`).
 - `eval_corpus_path`: optional.
+- `task_overrides`: optional phase-specific task overrides.
+- `eval_task_overrides`: optional phase-specific eval overrides.
 
 ## `DreamFormerConfig` override fields
 
@@ -101,5 +105,17 @@ Each phase object:
 - `replay_beta_start`
 - `replay_beta_end`
 - `eval_batches`
+- `query_loss_weight`
 - `amp`
 - `compile_model`
+
+## Task override fields
+
+- `passkey`:
+  - `key_copies`
+  - `answer_vocab_size`
+  - `distractor_vocab_size`
+- `needle`:
+  - `needle_copies`
+  - `answer_vocab_size`
+  - `distractor_vocab_size`

@@ -14,7 +14,7 @@ import torch
 from .config import DreamFormerConfig
 from .metrics import ExperimentLogger
 from .model import DreamFormerModel
-from .tasks import TaskBatch, query_accuracy
+from .tasks import TaskBatch, query_accuracy, query_cross_entropy
 
 
 BatchFn = Callable[[int, int, int, torch.device], TaskBatch]
@@ -35,6 +35,7 @@ class TrainingConfig:
     replay_beta_start: float = 0.4
     replay_beta_end: float = 1.0
     eval_batches: int = 20
+    query_loss_weight: float = 0.0
     amp: bool = False
     compile_model: bool = False
     console_log: bool = True
@@ -61,6 +62,8 @@ class TrainingConfig:
             raise ValueError("replay_beta_end must be in [0, 1]")
         if self.eval_batches <= 0:
             raise ValueError("eval_batches must be positive")
+        if self.query_loss_weight < 0.0:
+            raise ValueError("query_loss_weight must be >= 0.0")
 
 
 class Trainer:
@@ -163,7 +166,9 @@ class Trainer:
                 out = self.model(batch.input_ids, targets=batch.targets, write_memory=True)
                 if out.loss is None:
                     raise RuntimeError("model returned None loss while training")
-                loss = out.loss
+                model_loss = out.loss
+                query_loss = self._query_loss(batch, out.logits)
+                loss = model_loss + cfg.query_loss_weight * query_loss
 
             if not torch.isfinite(loss).all():
                 checkpoint_path = self.save_checkpoint(
@@ -205,6 +210,8 @@ class Trainer:
             if self.step % cfg.log_every == 0:
                 metrics = {
                     "loss": float(loss.item()),
+                    "model_loss": float(model_loss.item()),
+                    "query_loss": float(query_loss.item()),
                     "lr": float(self.optimizer.param_groups[0]["lr"]),
                     "replay_beta": float(beta),
                     **out.memory_stats,
@@ -265,6 +272,8 @@ class Trainer:
     def evaluate(self, batch_fn: BatchFn, num_batches: int) -> dict[str, float]:
         self.model.eval()
         losses: list[float] = []
+        model_losses: list[float] = []
+        query_losses: list[float] = []
         query_accs: list[float] = []
         with torch.no_grad():
             for _ in range(num_batches):
@@ -277,12 +286,18 @@ class Trainer:
                 out = self.model(batch.input_ids, targets=batch.targets, write_memory=False)
                 if out.loss is None:
                     raise RuntimeError("model returned None loss during evaluation")
-                losses.append(float(out.loss.item()))
+                query_loss = self._query_loss(batch, out.logits)
+                total_loss = out.loss + self.training_config.query_loss_weight * query_loss
+                losses.append(float(total_loss.item()))
+                model_losses.append(float(out.loss.item()))
+                query_losses.append(float(query_loss.item()))
                 qa = query_accuracy(batch, out.logits)
                 if qa is not None:
                     query_accs.append(qa)
 
         metrics = {"eval_loss": float(sum(losses) / len(losses))}
+        metrics["eval_model_loss"] = float(sum(model_losses) / len(model_losses))
+        metrics["eval_query_loss"] = float(sum(query_losses) / len(query_losses))
         if query_accs:
             metrics["eval_query_acc"] = float(sum(query_accs) / len(query_accs))
         metrics.update(self.model.memory_stats())
@@ -314,6 +329,8 @@ class Trainer:
             f"step={self.step}/{self.training_config.steps} "
             f"progress={100.0 * self.step / self.training_config.steps:.1f}% "
             f"loss={metrics['loss']:.6f} "
+            f"model_loss={metrics['model_loss']:.6f} "
+            f"query_loss={metrics['query_loss']:.6f} "
             f"lr={metrics['lr']:.2e} "
             f"replay_size={int(metrics['replay_size'])} "
             f"stm_live={int(metrics['stm_live_slots'])} "
@@ -344,6 +361,8 @@ class Trainer:
             "eval "
             f"step={self.step}/{self.training_config.steps} "
             f"eval_loss={metrics['eval_loss']:.6f} "
+            f"eval_model_loss={metrics['eval_model_loss']:.6f} "
+            f"eval_query_loss={metrics['eval_query_loss']:.6f} "
             f"replay_size={int(metrics['replay_size'])} "
             f"stm_live={int(metrics['stm_live_slots'])} "
             f"gate={metrics['memory_gate_mean']:.4f} "
@@ -362,3 +381,9 @@ class Trainer:
         if "eval_query_acc" in metrics:
             message += f" eval_query_acc={metrics['eval_query_acc']:.4f}"
         self._emit(message)
+
+    def _query_loss(self, batch: TaskBatch, logits: torch.Tensor) -> torch.Tensor:
+        loss = query_cross_entropy(batch, logits)
+        if loss is None:
+            return torch.zeros((), device=logits.device, dtype=logits.dtype)
+        return loss

@@ -31,19 +31,28 @@ def generate_passkey_batch(
     seq_len: int,
     vocab_size: int,
     device: torch.device,
+    key_copies: int = 1,
+    answer_vocab_size: int | None = None,
+    distractor_vocab_size: int | None = None,
 ) -> TaskBatch:
     if vocab_size <= MIN_RANDOM_TOKEN:
         raise ValueError("vocab_size must be greater than 3 for passkey batches")
     if seq_len < 8:
         raise ValueError("passkey sequence length must be >= 8")
+    if key_copies <= 0:
+        raise ValueError("key_copies must be positive")
 
-    tokens = torch.randint(MIN_RANDOM_TOKEN, vocab_size, (batch_size, seq_len), device=device)
+    answer_upper = _bounded_vocab_upper(vocab_size=vocab_size, limit=answer_vocab_size)
+    distractor_upper = _bounded_vocab_upper(vocab_size=vocab_size, limit=distractor_vocab_size)
+    tokens = torch.randint(MIN_RANDOM_TOKEN, distractor_upper, (batch_size, seq_len), device=device)
     query_pos = seq_len - 2
     answer_pos = seq_len - 1
 
-    keys = torch.randint(MIN_RANDOM_TOKEN, vocab_size, (batch_size,), device=device)
-    tokens[:, 0] = KEY_MARK
-    tokens[:, 1] = keys
+    keys = torch.randint(MIN_RANDOM_TOKEN, answer_upper, (batch_size,), device=device)
+    key_positions = _paired_marker_positions(query_pos=query_pos, copies=key_copies, device=device)
+    for pos in key_positions.tolist():
+        tokens[:, pos] = KEY_MARK
+        tokens[:, pos + 1] = keys
     tokens[:, query_pos] = QUERY_MARK
     tokens[:, answer_pos] = keys
 
@@ -60,20 +69,31 @@ def generate_needle_batch(
     seq_len: int,
     vocab_size: int,
     device: torch.device,
+    needle_copies: int = 1,
+    answer_vocab_size: int | None = None,
+    distractor_vocab_size: int | None = None,
 ) -> TaskBatch:
     if vocab_size <= MIN_RANDOM_TOKEN:
         raise ValueError("vocab_size must be greater than 3 for needle batches")
     if seq_len < 12:
         raise ValueError("needle sequence length must be >= 12")
+    if needle_copies <= 0:
+        raise ValueError("needle_copies must be positive")
 
-    tokens = torch.randint(MIN_RANDOM_TOKEN, vocab_size, (batch_size, seq_len), device=device)
+    answer_upper = _bounded_vocab_upper(vocab_size=vocab_size, limit=answer_vocab_size)
+    distractor_upper = _bounded_vocab_upper(vocab_size=vocab_size, limit=distractor_vocab_size)
+    tokens = torch.randint(MIN_RANDOM_TOKEN, distractor_upper, (batch_size, seq_len), device=device)
     query_pos = seq_len - 2
     answer_pos = seq_len - 1
 
-    answers = torch.randint(MIN_RANDOM_TOKEN, vocab_size, (batch_size,), device=device)
-    needle_pos = torch.randint(1, seq_len - 4, (batch_size,), device=device)
+    answers = torch.randint(MIN_RANDOM_TOKEN, answer_upper, (batch_size,), device=device)
+    candidate_positions = torch.arange(1, query_pos - 1, device=device)
+    if candidate_positions.numel() < needle_copies:
+        raise ValueError("sequence too short for requested needle_copies")
     batch_indices = torch.arange(batch_size, device=device)
-    tokens[batch_indices, needle_pos] = answers
+    sampled_order = torch.rand(batch_size, candidate_positions.numel(), device=device).argsort(dim=1)
+    needle_pos = candidate_positions[sampled_order[:, :needle_copies]]
+    tokens[batch_indices.unsqueeze(1), needle_pos] = answers.unsqueeze(1)
     tokens[:, query_pos] = QUERY_MARK
     tokens[:, answer_pos] = answers
 
@@ -145,3 +165,40 @@ def query_accuracy(batch: TaskBatch, logits: torch.Tensor) -> float | None:
     query_logits = logits[batch_indices, batch.query_positions]
     pred = torch.argmax(query_logits, dim=-1)
     return float((pred == batch.answers).float().mean().item())
+
+
+def query_cross_entropy(batch: TaskBatch, logits: torch.Tensor) -> torch.Tensor | None:
+    if batch.query_positions is None or batch.answers is None:
+        return None
+    batch_indices = torch.arange(logits.shape[0], device=logits.device)
+    query_logits = logits[batch_indices, batch.query_positions]
+    return torch.nn.functional.cross_entropy(query_logits, batch.answers)
+
+
+def _bounded_vocab_upper(vocab_size: int, limit: int | None) -> int:
+    if limit is None:
+        return vocab_size
+    upper = min(vocab_size, MIN_RANDOM_TOKEN + int(limit))
+    if upper <= MIN_RANDOM_TOKEN:
+        raise ValueError("bounded vocab limit is too small")
+    return upper
+
+
+def _paired_marker_positions(query_pos: int, copies: int, device: torch.device) -> torch.Tensor:
+    max_copies = max(1, (query_pos - 1) // 2)
+    copies = min(copies, max_copies)
+    max_start = query_pos - 2
+    if copies == 1:
+        return torch.tensor([0], device=device, dtype=torch.long)
+    raw = torch.linspace(0, max_start, steps=copies, device=device)
+    positions = []
+    last = -2
+    for value in raw.tolist():
+        pos = min(int(round(value)), max_start)
+        if pos <= last + 1:
+            pos = last + 2
+        if pos > max_start:
+            pos = max_start
+        positions.append(pos)
+        last = pos
+    return torch.tensor(positions, device=device, dtype=torch.long)
