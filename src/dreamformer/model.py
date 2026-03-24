@@ -213,6 +213,7 @@ class DreamFormerModel(nn.Module):
 
     def _inject_memory(self, hidden: torch.Tensor) -> torch.Tensor:
         batch, seq_len, _ = hidden.shape
+        hidden = torch.nan_to_num(hidden, nan=0.0, posinf=1e4, neginf=-1e4)
         key_query = self.memory_key_proj(hidden).reshape(batch * seq_len, -1)
         if self.config.enable_stm:
             stm_values, _ = self.stm.read(
@@ -244,7 +245,11 @@ class DreamFormerModel(nn.Module):
             )
         else:
             gate = torch.sigmoid(self.memory_gate(hidden)).reshape(batch * seq_len, 1)
+        gate = torch.nan_to_num(gate, nan=0.0, posinf=1.0, neginf=0.0)
+        stm_values = torch.nan_to_num(stm_values, nan=0.0, posinf=0.0, neginf=0.0)
+        ltm_values = torch.nan_to_num(ltm_values, nan=0.0, posinf=0.0, neginf=0.0)
         mixed = gate * ltm_values + (1.0 - gate) * stm_values
+        mixed = torch.nan_to_num(mixed, nan=0.0, posinf=0.0, neginf=0.0)
         self._last_gate_mean = float(gate.mean().detach().cpu().item())
 
         injected = self.memory_read_proj(mixed).reshape(batch, seq_len, -1)
@@ -259,8 +264,9 @@ class DreamFormerModel(nn.Module):
         if not (self.config.enable_stm or self.config.enable_replay):
             return
 
-        keys = self.memory_key_proj(hidden[:, -1, :])
-        values = self.memory_write_proj(hidden[:, -1, :])
+        last_hidden = torch.nan_to_num(hidden[:, -1, :], nan=0.0, posinf=1e4, neginf=-1e4)
+        keys = torch.nan_to_num(self.memory_key_proj(last_hidden), nan=0.0, posinf=0.0, neginf=0.0)
+        values = torch.nan_to_num(self.memory_write_proj(last_hidden), nan=0.0, posinf=0.0, neginf=0.0)
         if self.config.enable_stm:
             slots = self.stm.write(
                 keys=keys,
@@ -282,6 +288,12 @@ class DreamFormerModel(nn.Module):
             ).detach()
         else:
             per_sample_priority = values.norm(dim=-1).detach()
+        per_sample_priority = torch.nan_to_num(
+            per_sample_priority,
+            nan=float(self.config.replay_epsilon),
+            posinf=1e6,
+            neginf=float(self.config.replay_epsilon),
+        )
 
         for i in range(hidden.shape[0]):
             slot = int(slots[i].item())

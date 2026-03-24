@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 import random
 from typing import Any
 
@@ -53,7 +54,7 @@ class PrioritizedReplayBuffer:
         priority: float | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> int:
-        raw_priority = self._max_priority if priority is None else float(abs(priority))
+        raw_priority = self._sanitize_priority(self._max_priority if priority is None else priority)
         scaled = self._to_scaled_priority(raw_priority)
         index = self._next
         self._entries[index] = ReplayEntry(
@@ -77,7 +78,7 @@ class PrioritizedReplayBuffer:
 
         batch_size = min(batch_size, self._size)
         total_priority = float(self._tree[1])
-        if total_priority <= 0:
+        if not math.isfinite(total_priority) or total_priority <= 0:
             return None
 
         segment = total_priority / batch_size
@@ -94,7 +95,7 @@ class PrioritizedReplayBuffer:
             entry = self._entries[idx]
             if entry is None:
                 continue
-            leaf_priority = float(self._tree[idx + self.capacity])
+            leaf_priority = self._sanitize_priority(float(self._tree[idx + self.capacity]))
             prob = leaf_priority / total_priority
 
             sampled_indices.append(idx)
@@ -152,13 +153,19 @@ class PrioritizedReplayBuffer:
         if len(indices) != len(priorities):
             raise ValueError("indices and priorities must have equal lengths")
         for idx, prio in zip(indices, priorities):
-            raw = float(abs(prio))
+            raw = self._sanitize_priority(prio)
             scaled = self._to_scaled_priority(raw)
             self._set_priority(idx, scaled)
             self._max_priority = max(self._max_priority, raw)
 
     def _to_scaled_priority(self, raw: float) -> float:
         return (raw + self.epsilon) ** self.alpha
+
+    def _sanitize_priority(self, raw: float) -> float:
+        value = float(abs(raw))
+        if not math.isfinite(value):
+            return max(self.epsilon, self._max_priority)
+        return max(self.epsilon, value)
 
     def _set_priority(self, index: int, scaled_priority: float) -> None:
         tree_idx = index + self.capacity

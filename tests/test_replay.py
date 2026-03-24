@@ -50,3 +50,13 @@ def test_uniform_sampling_returns_expected_batch() -> None:
     assert len(batch.indices) == 3
     assert batch.weights.shape == (3,)
     assert float(batch.weights.mean().item()) == 1.0
+
+
+def test_replay_sanitizes_nonfinite_priorities() -> None:
+    replay = PrioritizedReplayBuffer(capacity=4, alpha=0.6, epsilon=1e-3)
+    replay.add(torch.tensor([1.0]), torch.tensor([1.0]), priority=float("nan"))
+    replay.add(torch.tensor([2.0]), torch.tensor([2.0]), priority=float("inf"))
+
+    batch = replay.sample(batch_size=2, beta=0.4)
+    assert batch is not None
+    assert torch.isfinite(batch.priorities).all()

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import torch
 
 from dreamformer import DreamFormerConfig, DreamFormerModel
@@ -137,3 +138,52 @@ def test_trainer_emits_console_progress(tmp_path: Path, capsys) -> None:
     assert "train step=" in captured.out
     assert "eval step=" in captured.out
     assert "run_complete" in captured.out
+
+
+def test_trainer_fails_fast_on_nonfinite_loss(tmp_path: Path, capsys) -> None:
+    model_cfg = _tiny_model_config()
+    train_cfg = TrainingConfig(
+        steps=4,
+        batch_size=4,
+        seq_len=16,
+        learning_rate=1e-3,
+        log_every=1,
+        eval_every=4,
+        checkpoint_every=4,
+        nrem_every=2,
+        eval_batches=1,
+        console_log=True,
+        fail_on_nonfinite_loss=True,
+    )
+    trainer = Trainer(
+        model=DreamFormerModel(model_cfg),
+        model_config=model_cfg,
+        training_config=train_cfg,
+        device=torch.device("cpu"),
+        output_dir=tmp_path,
+    )
+
+    def _bad_batch(batch_size: int, seq_len: int, vocab_size: int, device: torch.device):
+        batch = generate_passkey_batch(batch_size, seq_len, vocab_size, device)
+        batch.input_ids = batch.input_ids.clone()
+        return batch
+
+    original_forward = trainer.model.forward
+
+    def _forward_with_nan(*args, **kwargs):
+        out = original_forward(*args, **kwargs)
+        if out.loss is not None:
+            out.loss = out.loss * torch.tensor(float("nan"))
+        return out
+
+    trainer.model.forward = _forward_with_nan  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="non-finite loss detected"):
+        trainer.train(
+            train_batch_fn=_bad_batch,
+            eval_batch_fn=generate_passkey_batch,
+            run_name="nonfinite",
+        )
+
+    captured = capsys.readouterr()
+    assert "nonfinite_loss_detected" in captured.out

@@ -197,11 +197,12 @@ class SemanticMemory(nn.Module):
         if query.size(-1) != self.key_dim:
             raise ValueError(f"query dim {query.size(-1)} != key_dim {self.key_dim}")
 
-        q = self._phi(query)
-        normalizer = self.normalizer.detach().to(query.device).clone()
-        matrix = self.matrix.detach().to(query.device).clone()
+        q = self._phi(query.to(dtype=torch.float32))
+        normalizer = self.normalizer.detach().to(query.device, dtype=torch.float32).clone()
+        matrix = self.matrix.detach().to(query.device, dtype=torch.float32).clone()
         denom = (q @ normalizer).unsqueeze(-1).clamp_min(self.eps)
         out = (q @ matrix) / denom
+        out = torch.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
         return out
 
     def update(self, keys: torch.Tensor, values: torch.Tensor, lr: float = 1.0) -> float:
@@ -215,13 +216,26 @@ class SemanticMemory(nn.Module):
             raise ValueError("keys/values shape mismatch with memory dimensions")
 
         with torch.no_grad():
-            keys = keys.to(self.matrix.device)
-            values = values.to(self.matrix.device)
+            keys = torch.nan_to_num(
+                keys.to(self.matrix.device, dtype=torch.float32),
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            )
+            values = torch.nan_to_num(
+                values.to(self.matrix.device, dtype=torch.float32),
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            )
             k = self._phi(keys)
             current = self.read(keys)
-            delta = values - current
+            delta = torch.nan_to_num(values - current, nan=0.0, posinf=0.0, neginf=0.0)
+            delta = delta.clamp(-100.0, 100.0)
             scale = lr / max(1, keys.shape[0])
             self.matrix += scale * (k.t() @ delta)
             self.normalizer += scale * k.sum(dim=0)
+            self.matrix.clamp_(-1e4, 1e4)
+            self.normalizer.clamp_(0.0, 1e6)
             mse = float((delta.pow(2).mean()).item())
             return mse

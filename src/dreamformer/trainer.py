@@ -38,6 +38,7 @@ class TrainingConfig:
     amp: bool = False
     compile_model: bool = False
     console_log: bool = True
+    fail_on_nonfinite_loss: bool = True
 
     def __post_init__(self) -> None:
         if self.steps <= 0:
@@ -163,6 +164,25 @@ class Trainer:
                 if out.loss is None:
                     raise RuntimeError("model returned None loss while training")
                 loss = out.loss
+
+            if not torch.isfinite(loss).all():
+                checkpoint_path = self.save_checkpoint(
+                    self.output_dir / f"{run_name}_checkpoint_nonfinite_step{self.step}.pt"
+                )
+                self._emit(
+                    "nonfinite_loss_detected "
+                    f"step={self.step} path={checkpoint_path} "
+                    f"replay_size={int(out.memory_stats['replay_size'])} "
+                    f"stm_live={int(out.memory_stats['stm_live_slots'])} "
+                    f"gate={out.memory_stats['memory_gate_mean']:.4f}"
+                )
+                if cfg.fail_on_nonfinite_loss:
+                    raise RuntimeError(
+                        "non-finite loss detected; checkpoint saved at "
+                        f"{checkpoint_path}"
+                    )
+                self.optimizer.zero_grad(set_to_none=True)
+                continue
 
             self.optimizer.zero_grad(set_to_none=True)
             if self._use_amp:

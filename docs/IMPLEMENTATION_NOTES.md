@@ -55,6 +55,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: low-magnitude or degenerate vectors under real-compute settings could introduce non-finite values during memory normalization and similarity computation.
    - Fix: normalize in fp32 with explicit `eps`, scrub non-finite deltas with `nan_to_num`, and sanitize metadata extraction in `_stage_experience`.
 
+7. Silent non-finite loss spirals during long mixed-precision runs:
+   - Cause: once non-finite values entered memory/replay paths, training could continue for many steps without failing loudly.
+   - Fix: sanitize replay priorities, clamp and scrub LTM updates/reads, sanitize memory projections, and fail fast with a saved checkpoint when non-finite loss is detected.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.
