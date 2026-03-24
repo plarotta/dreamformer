@@ -120,3 +120,24 @@ def test_model_stage_experience_handles_zero_vectors_without_nan_metadata() -> N
     assert batch is not None
     for meta in batch.metadata:
         assert isinstance(meta["access_count"], int)
+
+
+def test_model_gate_initialization_and_regularization() -> None:
+    torch.manual_seed(31)
+    config = _tiny_config()
+    config.memory_gate_init = 0.25
+    config.memory_gate_target = 0.20
+    config.memory_gate_band = 0.05
+    config.memory_gate_regularization_weight = 0.1
+    model = DreamFormerModel(config)
+
+    bias_prob = torch.sigmoid(model.memory_gate.bias.detach()).mean().item()
+    assert abs(bias_prob - 0.25) < 0.05
+
+    tokens = torch.randint(0, config.vocab_size, (2, 8))
+    targets = torch.randint(0, config.vocab_size, (2, 8))
+    out = model(tokens, targets=targets, write_memory=False)
+    assert out.loss is not None
+    assert out.memory_stats["memory_gate_reg_loss"] >= 0.0
+    assert 0.0 <= out.memory_stats["memory_gate_min"] <= 1.0
+    assert 0.0 <= out.memory_stats["memory_gate_max"] <= 1.0

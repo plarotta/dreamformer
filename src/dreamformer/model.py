@@ -76,6 +76,7 @@ class DreamFormerModel(nn.Module):
         self.memory_read_proj = nn.Linear(config.memory_value_dim, config.d_model)
         self.memory_gate = nn.Linear(config.d_model, 1)
         self.consolidation_gate = nn.Linear(config.memory_key_dim + config.memory_value_dim, 1)
+        self._init_memory_gate()
 
         self.stm = EpisodicMemory(
             num_slots=config.num_stm_slots,
@@ -93,6 +94,12 @@ class DreamFormerModel(nn.Module):
         )
 
         self._last_gate_mean = 0.5
+        self._last_gate_min = 0.5
+        self._last_gate_max = 0.5
+        self._last_gate_reg_loss = 0.0
+        self._last_stm_read_norm = 0.0
+        self._last_ltm_read_norm = 0.0
+        self._last_gate_tensor: torch.Tensor | None = None
 
     def forward(
         self,
@@ -133,6 +140,9 @@ class DreamFormerModel(nn.Module):
                 logits.reshape(batch * seq_len, self.config.vocab_size),
                 targets.reshape(batch * seq_len),
             )
+            gate_reg_loss = self._gate_regularization_loss()
+            self._last_gate_reg_loss = float(gate_reg_loss.detach().cpu().item())
+            loss = loss + gate_reg_loss
 
         if write_memory:
             self._stage_experience(memory_hidden.detach(), logits.detach(), targets)
@@ -209,6 +219,11 @@ class DreamFormerModel(nn.Module):
             "replay_size": float(len(self.replay_buffer)),
             "replay_total_priority": float(self.replay_buffer.total_priority),
             "memory_gate_mean": float(self._last_gate_mean),
+            "memory_gate_min": float(self._last_gate_min),
+            "memory_gate_max": float(self._last_gate_max),
+            "memory_gate_reg_loss": float(self._last_gate_reg_loss),
+            "stm_read_norm": float(self._last_stm_read_norm),
+            "ltm_read_norm": float(self._last_ltm_read_norm),
         }
 
     def _inject_memory(self, hidden: torch.Tensor) -> torch.Tensor:
@@ -251,6 +266,11 @@ class DreamFormerModel(nn.Module):
         mixed = gate * ltm_values + (1.0 - gate) * stm_values
         mixed = torch.nan_to_num(mixed, nan=0.0, posinf=0.0, neginf=0.0)
         self._last_gate_mean = float(gate.mean().detach().cpu().item())
+        self._last_gate_min = float(gate.min().detach().cpu().item())
+        self._last_gate_max = float(gate.max().detach().cpu().item())
+        self._last_stm_read_norm = float(stm_values.norm(dim=-1).mean().detach().cpu().item())
+        self._last_ltm_read_norm = float(ltm_values.norm(dim=-1).mean().detach().cpu().item())
+        self._last_gate_tensor = gate
 
         injected = self.memory_read_proj(mixed).reshape(batch, seq_len, -1)
         return hidden + injected
@@ -320,3 +340,23 @@ class DreamFormerModel(nn.Module):
     def _causal_attn_mask(seq_len: int, device: torch.device) -> torch.Tensor:
         mask = torch.full((seq_len, seq_len), float("-inf"), device=device)
         return torch.triu(mask, diagonal=1)
+
+    def _gate_regularization_loss(self) -> torch.Tensor:
+        if (
+            self._last_gate_tensor is None
+            or self.config.fixed_memory_gate is not None
+            or self.config.memory_gate_regularization_weight == 0.0
+        ):
+            device = self.token_embedding.weight.device
+            return torch.zeros((), device=device)
+
+        gate_mean = self._last_gate_tensor.mean()
+        deviation = torch.relu(torch.abs(gate_mean - self.config.memory_gate_target) - self.config.memory_gate_band)
+        return self.config.memory_gate_regularization_weight * deviation.square()
+
+    def _init_memory_gate(self) -> None:
+        init = float(self.config.memory_gate_init)
+        init = min(max(init, 1e-4), 1.0 - 1e-4)
+        bias_value = torch.logit(torch.tensor(init)).item()
+        nn.init.normal_(self.memory_gate.weight, mean=0.0, std=1e-3)
+        nn.init.constant_(self.memory_gate.bias, bias_value)

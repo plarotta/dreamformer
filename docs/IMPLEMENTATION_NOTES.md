@@ -59,6 +59,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: once non-finite values entered memory/replay paths, training could continue for many steps without failing loudly.
    - Fix: sanitize replay priorities, clamp and scrub LTM updates/reads, sanitize memory projections, and fail fast with a saved checkpoint when non-finite loss is detected.
 
+8. Memory gate collapse to near-pure STM routing:
+   - Cause: the learned gate initialized near a regime that strongly favored STM and had no explicit pressure to explore LTM usage.
+   - Fix: configurable gate-bias initialization, soft gate regularization toward a target range, and richer gate diagnostics in train/eval logs.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

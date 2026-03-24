@@ -22,13 +22,17 @@
     "stm_top_k": 8,
     "stm_update_threshold": 0.88,
     "ltm_update_rate": 0.2,
-    "nrem_threshold": 0.35
+    "nrem_threshold": 0.35,
+    "memory_gate_init": 0.25,
+    "memory_gate_target": 0.20,
+    "memory_gate_band": 0.10,
+    "memory_gate_regularization_weight": 0.05
   },
   "train_overrides": {
     "steps": 12000,
     "batch_size": 96,
     "seq_len": 128,
-    "learning_rate": 0.0001,
+    "learning_rate": 8e-05,
     "weight_decay": 0.01,
     "grad_clip_norm": 1.0,
     "log_every": 50,

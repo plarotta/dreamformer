@@ -34,6 +34,10 @@ class DreamFormerConfig:
     enable_nrem: bool = True
     replay_strategy: str = "prioritized"
     fixed_memory_gate: float | None = None
+    memory_gate_init: float = 0.30
+    memory_gate_target: float = 0.25
+    memory_gate_band: float = 0.10
+    memory_gate_regularization_weight: float = 0.02
 
     def __post_init__(self) -> None:
         if self.vocab_size <= 1:
@@ -60,6 +64,14 @@ class DreamFormerConfig:
             raise ValueError("replay_strategy must be 'prioritized' or 'uniform'")
         if self.fixed_memory_gate is not None and not 0.0 <= self.fixed_memory_gate <= 1.0:
             raise ValueError("fixed_memory_gate must be in [0.0, 1.0]")
+        if not 0.0 < self.memory_gate_init < 1.0:
+            raise ValueError("memory_gate_init must be in (0.0, 1.0)")
+        if not 0.0 <= self.memory_gate_target <= 1.0:
+            raise ValueError("memory_gate_target must be in [0.0, 1.0]")
+        if not 0.0 <= self.memory_gate_band <= 1.0:
+            raise ValueError("memory_gate_band must be in [0.0, 1.0]")
+        if self.memory_gate_regularization_weight < 0.0:
+            raise ValueError("memory_gate_regularization_weight must be >= 0.0")
         if self.memory_layer_index < 0:
             self.memory_layer_index = self.n_layers + self.memory_layer_index
         if not 0 <= self.memory_layer_index < self.n_layers:
