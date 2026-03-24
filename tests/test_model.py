@@ -87,3 +87,18 @@ def test_model_uniform_replay_path() -> None:
 
     stats = model.nrem_consolidation_step(batch_size=4, beta=0.4)
     assert stats["sampled"] >= 0.0
+
+
+def test_model_nrem_handles_half_precision_replay_entries() -> None:
+    torch.manual_seed(23)
+    config = _tiny_config()
+    model = DreamFormerModel(config)
+
+    # Simulate fp16 samples in replay, as happens in mixed-precision training.
+    for _ in range(8):
+        key = torch.randn(config.memory_key_dim, dtype=torch.float16)
+        value = torch.randn(config.memory_value_dim, dtype=torch.float16)
+        model.replay_buffer.add(key=key, value=value, priority=1.0)
+
+    stats = model.nrem_consolidation_step(batch_size=4, beta=0.4)
+    assert stats["sampled"] > 0.0

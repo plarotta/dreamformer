@@ -47,6 +47,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: under autocast, `weights` and `sparse_weights` could end up in different dtypes before `scatter_`.
    - Fix: explicit fp32 softmax weights and fp32 scatter destination in `EpisodicMemory.read`.
 
+5. Mixed-precision dtype mismatch in NREM consolidation gate:
+   - Cause: replay entries could be fp16 while consolidation gate weights are fp32, causing `linear` matmul dtype mismatch.
+   - Fix: cast replay `keys`/`values` to the consolidation gate dtype before computing NREM scores.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

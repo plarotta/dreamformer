@@ -165,8 +165,9 @@ class DreamFormerModel(nn.Module):
             }
 
         device = self.token_embedding.weight.device
-        keys = sample.keys.to(device)
-        values = sample.values.to(device)
+        target_dtype = self.consolidation_gate.weight.dtype
+        keys = sample.keys.to(device=device, dtype=target_dtype)
+        values = sample.values.to(device=device, dtype=target_dtype)
 
         with torch.no_grad():
             gate_input = torch.cat([keys, values], dim=-1)
