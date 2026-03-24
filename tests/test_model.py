@@ -102,3 +102,21 @@ def test_model_nrem_handles_half_precision_replay_entries() -> None:
 
     stats = model.nrem_consolidation_step(batch_size=4, beta=0.4)
     assert stats["sampled"] > 0.0
+
+
+def test_model_stage_experience_handles_zero_vectors_without_nan_metadata() -> None:
+    torch.manual_seed(29)
+    config = _tiny_config()
+    model = DreamFormerModel(config)
+
+    hidden = torch.zeros(3, 5, config.d_model)
+    logits = torch.zeros(3, 5, config.vocab_size)
+    targets = torch.zeros(3, 5, dtype=torch.long)
+
+    model._stage_experience(hidden, logits, targets)
+
+    assert torch.isfinite(model.stm.access_count).all()
+    batch = model.replay_buffer.sample(batch_size=3, beta=0.4)
+    assert batch is not None
+    for meta in batch.metadata:
+        assert isinstance(meta["access_count"], int)

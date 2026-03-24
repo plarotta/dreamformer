@@ -51,6 +51,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: replay entries could be fp16 while consolidation gate weights are fp32, causing `linear` matmul dtype mismatch.
    - Fix: cast replay `keys`/`values` to the consolidation gate dtype before computing NREM scores.
 
+6. NaN propagation into `STM.access_count` metadata:
+   - Cause: low-magnitude or degenerate vectors under real-compute settings could introduce non-finite values during memory normalization and similarity computation.
+   - Fix: normalize in fp32 with explicit `eps`, scrub non-finite deltas with `nan_to_num`, and sanitize metadata extraction in `_stage_experience`.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

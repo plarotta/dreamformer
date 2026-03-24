@@ -72,8 +72,12 @@ class EpisodicMemory(nn.Module):
             )
             return values, weights
 
-        keys = F.normalize(self.keys.detach().to(query.device).clone(), dim=-1)
-        query = F.normalize(query, dim=-1)
+        keys = F.normalize(
+            self.keys.detach().to(query.device, dtype=torch.float32).clone(),
+            dim=-1,
+            eps=1e-6,
+        )
+        query = F.normalize(query.to(dtype=torch.float32), dim=-1, eps=1e-6)
 
         similarity = query @ keys.t()
         similarity[:, ~self.alive.to(query.device)] = -1e9
@@ -93,6 +97,7 @@ class EpisodicMemory(nn.Module):
 
         with torch.no_grad():
             usage_delta = weights.detach().mean(dim=0).to(self.usage.device)
+            usage_delta = torch.nan_to_num(usage_delta, nan=0.0, posinf=0.0, neginf=0.0)
             self.usage += usage_delta * 0.05
             self.access_count += usage_delta
 
@@ -116,8 +121,18 @@ class EpisodicMemory(nn.Module):
 
         with torch.no_grad():
             self.usage *= usage_decay
-            keys = F.normalize(keys.to(self.keys.device), dim=-1)
-            values = values.to(self.values.device)
+            keys = F.normalize(
+                keys.to(self.keys.device, dtype=torch.float32),
+                dim=-1,
+                eps=1e-6,
+            )
+            keys = torch.nan_to_num(keys, nan=0.0, posinf=0.0, neginf=0.0)
+            values = torch.nan_to_num(
+                values.to(self.values.device),
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            )
 
             selected = []
             live_mask = self.alive
@@ -125,7 +140,13 @@ class EpisodicMemory(nn.Module):
                 if int(live_mask.sum().item()) > 0:
                     live_indices = torch.where(live_mask)[0]
                     live_keys = self.keys[live_indices]
-                    similarity = F.cosine_similarity(live_keys, key.unsqueeze(0), dim=-1)
+                    similarity = F.cosine_similarity(
+                        live_keys.to(dtype=torch.float32),
+                        key.unsqueeze(0),
+                        dim=-1,
+                        eps=1e-6,
+                    )
+                    similarity = torch.nan_to_num(similarity, nan=-1.0, posinf=-1.0, neginf=-1.0)
                     best_value, best_idx = torch.max(similarity, dim=0)
                     if float(best_value.item()) >= update_threshold:
                         slot = int(live_indices[int(best_idx.item())].item())

@@ -285,13 +285,22 @@ class DreamFormerModel(nn.Module):
 
         for i in range(hidden.shape[0]):
             slot = int(slots[i].item())
+            access_count = 0
+            if slot >= 0:
+                access_value = torch.nan_to_num(
+                    self.stm.access_count[slot].detach(),
+                    nan=0.0,
+                    posinf=0.0,
+                    neginf=0.0,
+                )
+                access_count = int(float(access_value.item()))
             self.replay_buffer.add(
                 key=keys[i],
                 value=values[i],
                 priority=float(per_sample_priority[i].cpu().item()),
                 metadata={
                     "stm_slot": slot,
-                    "access_count": int(self.stm.access_count[slot].item()) if slot >= 0 else 0,
+                    "access_count": access_count,
                 },
             )
 
