@@ -42,6 +42,16 @@ Expected outputs:
 - `artifacts/runs/<run_name>/<run_name>_summary.json`
 - checkpoints (`*_checkpoint_last.pt` and periodic checkpoints)
 
+Expected console logs during training:
+
+- `experiment_resolved ...`
+- `run_start ...`
+- periodic `train step=...` lines with loss, replay size, STM occupancy, gate value, NREM selections, steps/sec, and ETA
+- periodic `eval step=...` lines
+- `checkpoint_saved ...`
+- `best_checkpoint_updated ...`
+- `run_complete ...`
+
 ## 4. Real compute single run
 
 Example:

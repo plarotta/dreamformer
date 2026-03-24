@@ -103,3 +103,37 @@ def test_trainer_resume_from_checkpoint(tmp_path: Path) -> None:
         run_name="resume2",
     )
     assert summary["final_step"] == 10
+
+
+def test_trainer_emits_console_progress(tmp_path: Path, capsys) -> None:
+    model_cfg = _tiny_model_config()
+    train_cfg = TrainingConfig(
+        steps=4,
+        batch_size=4,
+        seq_len=16,
+        learning_rate=1e-3,
+        log_every=2,
+        eval_every=2,
+        checkpoint_every=4,
+        nrem_every=2,
+        eval_batches=1,
+        console_log=True,
+    )
+    trainer = Trainer(
+        model=DreamFormerModel(model_cfg),
+        model_config=model_cfg,
+        training_config=train_cfg,
+        device=torch.device("cpu"),
+        output_dir=tmp_path,
+    )
+    trainer.train(
+        train_batch_fn=generate_passkey_batch,
+        eval_batch_fn=generate_passkey_batch,
+        run_name="console",
+    )
+
+    captured = capsys.readouterr()
+    assert "run_start" in captured.out
+    assert "train step=" in captured.out
+    assert "eval step=" in captured.out
+    assert "run_complete" in captured.out

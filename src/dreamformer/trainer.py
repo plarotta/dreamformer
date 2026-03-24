@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import json
 from pathlib import Path
 import random
+import time
 from typing import Any, Callable
 
 import numpy as np
@@ -36,6 +37,7 @@ class TrainingConfig:
     eval_batches: int = 20
     amp: bool = False
     compile_model: bool = False
+    console_log: bool = True
 
     def __post_init__(self) -> None:
         if self.steps <= 0:
@@ -90,6 +92,7 @@ class Trainer:
         use_amp = training_config.amp and device.type == "cuda"
         self._use_amp = use_amp
         self.scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        self._train_start_time: float | None = None
 
         if training_config.compile_model and hasattr(torch, "compile"):
             self.model = torch.compile(self.model)  # type: ignore[assignment]
@@ -111,6 +114,7 @@ class Trainer:
         if torch.cuda.is_available():
             state["torch_cuda_state"] = torch.cuda.get_rng_state_all()
         torch.save(state, checkpoint_path)
+        self._emit(f"checkpoint_saved step={self.step} path={checkpoint_path}")
         return checkpoint_path
 
     def load_checkpoint(self, path: str | Path) -> None:
@@ -124,6 +128,10 @@ class Trainer:
         torch.random.set_rng_state(checkpoint["torch_state"])
         if torch.cuda.is_available() and "torch_cuda_state" in checkpoint:
             torch.cuda.set_rng_state_all(checkpoint["torch_cuda_state"])
+        self._emit(
+            "checkpoint_loaded "
+            f"step={self.step} best_eval_loss={self.best_eval_loss:.6f} path={path}"
+        )
 
     def train(
         self,
@@ -133,6 +141,13 @@ class Trainer:
     ) -> dict[str, Any]:
         cfg = self.training_config
         final_eval: dict[str, float] | None = None
+        self._train_start_time = time.monotonic()
+        self._emit(
+            "run_start "
+            f"run_name={run_name} device={self.device} steps={cfg.steps} "
+            f"batch_size={cfg.batch_size} seq_len={cfg.seq_len} "
+            f"amp={self._use_amp} compile={cfg.compile_model}"
+        )
 
         while self.step < cfg.steps:
             self.step += 1
@@ -179,14 +194,21 @@ class Trainer:
                 if qa is not None:
                     metrics["query_acc"] = qa
                 self.logger.log(step=self.step, split="train", metrics=metrics, run=run_name)
+                self._emit_train_progress(metrics)
 
             if eval_batch_fn is not None and self.step % cfg.eval_every == 0:
                 final_eval = self.evaluate(eval_batch_fn, num_batches=cfg.eval_batches)
                 self.logger.log(step=self.step, split="eval", metrics=final_eval, run=run_name)
+                self._emit_eval_progress(final_eval)
                 if final_eval["eval_loss"] < self.best_eval_loss:
                     self.best_eval_loss = final_eval["eval_loss"]
                     self.best_checkpoint_path = self.save_checkpoint(
                         self.output_dir / f"{run_name}_checkpoint_best.pt"
+                    )
+                    self._emit(
+                        "best_checkpoint_updated "
+                        f"step={self.step} eval_loss={final_eval['eval_loss']:.6f} "
+                        f"path={self.best_checkpoint_path}"
                     )
 
             if self.step % cfg.checkpoint_every == 0:
@@ -210,7 +232,14 @@ class Trainer:
 
         summary_path = self.output_dir / f"{run_name}_summary.json"
         summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
-        self.logger.dump_jsonl(self.output_dir / f"{run_name}_metrics.jsonl")
+        metrics_path = self.output_dir / f"{run_name}_metrics.jsonl"
+        self.logger.dump_jsonl(metrics_path)
+        self._emit(
+            "run_complete "
+            f"run_name={run_name} final_step={self.step} "
+            f"summary={summary_path} metrics={metrics_path} "
+            f"best_checkpoint={self.best_checkpoint_path}"
+        )
         return summary
 
     def evaluate(self, batch_fn: BatchFn, num_batches: int) -> dict[str, float]:
@@ -245,3 +274,48 @@ class Trainer:
             return cfg.replay_beta_end
         t = (step - 1) / (cfg.steps - 1)
         return cfg.replay_beta_start + t * (cfg.replay_beta_end - cfg.replay_beta_start)
+
+    def _emit(self, message: str) -> None:
+        if self.training_config.console_log:
+            print(message, flush=True)
+
+    def _emit_train_progress(self, metrics: dict[str, float]) -> None:
+        elapsed = 0.0
+        steps_per_sec = 0.0
+        eta_seconds = 0.0
+        if self._train_start_time is not None:
+            elapsed = max(0.0, time.monotonic() - self._train_start_time)
+            steps_per_sec = self.step / elapsed if elapsed > 0 else 0.0
+            remaining_steps = max(0, self.training_config.steps - self.step)
+            eta_seconds = remaining_steps / steps_per_sec if steps_per_sec > 0 else 0.0
+
+        message = (
+            "train "
+            f"step={self.step}/{self.training_config.steps} "
+            f"progress={100.0 * self.step / self.training_config.steps:.1f}% "
+            f"loss={metrics['loss']:.6f} "
+            f"lr={metrics['lr']:.2e} "
+            f"replay_size={int(metrics['replay_size'])} "
+            f"stm_live={int(metrics['stm_live_slots'])} "
+            f"gate={metrics['memory_gate_mean']:.4f} "
+            f"nrem_selected={metrics['nrem_selected']:.0f} "
+            f"steps_per_sec={steps_per_sec:.2f} "
+            f"elapsed_s={elapsed:.1f} "
+            f"eta_s={eta_seconds:.1f}"
+        )
+        if "query_acc" in metrics:
+            message += f" query_acc={metrics['query_acc']:.4f}"
+        self._emit(message)
+
+    def _emit_eval_progress(self, metrics: dict[str, float]) -> None:
+        message = (
+            "eval "
+            f"step={self.step}/{self.training_config.steps} "
+            f"eval_loss={metrics['eval_loss']:.6f} "
+            f"replay_size={int(metrics['replay_size'])} "
+            f"stm_live={int(metrics['stm_live_slots'])} "
+            f"gate={metrics['memory_gate_mean']:.4f}"
+        )
+        if "eval_query_acc" in metrics:
+            message += f" eval_query_acc={metrics['eval_query_acc']:.4f}"
+        self._emit(message)

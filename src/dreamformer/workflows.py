@@ -98,6 +98,12 @@ def run_training_job(spec: dict[str, Any]) -> dict[str, Any]:
         json.dumps(resolved, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    print(
+        "experiment_resolved "
+        f"run_name={run_name} variant={variant} task={task_name} "
+        f"eval_task={eval_task_name} device={device} output_dir={output_dir}",
+        flush=True,
+    )
 
     summary = trainer.train(train_batch_fn=train_fn, eval_batch_fn=eval_fn, run_name=run_name)
     summary["resolved_config"] = str(output_dir / "resolved_config.json")
