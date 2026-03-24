@@ -77,6 +77,14 @@ Each phase object:
   - `enable_nrem`
   - `replay_strategy`
   - `fixed_memory_gate`
+  - `memory_gate_init`
+  - `memory_gate_target`
+  - `memory_gate_band`
+  - `memory_gate_regularization_weight`
+  - `normalize_memory_reads`
+  - `memory_read_norm_eps`
+  - `stm_fusion_scale_init`
+  - `ltm_fusion_scale_init`
 
 ## `TrainingConfig` override fields
 

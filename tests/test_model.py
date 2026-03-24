@@ -141,3 +141,28 @@ def test_model_gate_initialization_and_regularization() -> None:
     assert out.memory_stats["memory_gate_reg_loss"] >= 0.0
     assert 0.0 <= out.memory_stats["memory_gate_min"] <= 1.0
     assert 0.0 <= out.memory_stats["memory_gate_max"] <= 1.0
+
+
+def test_model_balances_memory_sources_before_fusion() -> None:
+    torch.manual_seed(37)
+    config = _tiny_config()
+    config.nrem_threshold = 0.0
+    config.stm_fusion_scale_init = 0.25
+    config.ltm_fusion_scale_init = 1.25
+    model = DreamFormerModel(config)
+
+    tokens = torch.randint(0, config.vocab_size, (4, 10))
+    targets = torch.randint(0, config.vocab_size, (4, 10))
+
+    _ = model(tokens, targets=targets, write_memory=True)
+    nrem = model.nrem_consolidation_step(batch_size=4, beta=0.4)
+    assert nrem["selected"] > 0.0
+
+    out = model(tokens, targets=targets, write_memory=False)
+    stats = out.memory_stats
+    assert stats["stm_raw_read_norm"] > 0.0
+    assert stats["ltm_raw_read_norm"] > 0.0
+    assert stats["stm_fusion_scale"] > 0.0
+    assert stats["ltm_fusion_scale"] > stats["stm_fusion_scale"]
+    assert stats["stm_read_norm"] < stats["stm_raw_read_norm"]
+    assert stats["memory_mix_norm"] > 0.0

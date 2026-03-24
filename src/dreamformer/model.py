@@ -77,6 +77,8 @@ class DreamFormerModel(nn.Module):
         self.memory_gate = nn.Linear(config.d_model, 1)
         self.consolidation_gate = nn.Linear(config.memory_key_dim + config.memory_value_dim, 1)
         self._init_memory_gate()
+        self.stm_fusion_scale = nn.Parameter(self._inverse_softplus(config.stm_fusion_scale_init))
+        self.ltm_fusion_scale = nn.Parameter(self._inverse_softplus(config.ltm_fusion_scale_init))
 
         self.stm = EpisodicMemory(
             num_slots=config.num_stm_slots,
@@ -97,8 +99,13 @@ class DreamFormerModel(nn.Module):
         self._last_gate_min = 0.5
         self._last_gate_max = 0.5
         self._last_gate_reg_loss = 0.0
+        self._last_stm_raw_read_norm = 0.0
+        self._last_ltm_raw_read_norm = 0.0
         self._last_stm_read_norm = 0.0
         self._last_ltm_read_norm = 0.0
+        self._last_memory_mix_norm = 0.0
+        self._last_stm_fusion_scale = config.stm_fusion_scale_init
+        self._last_ltm_fusion_scale = config.ltm_fusion_scale_init
         self._last_gate_tensor: torch.Tensor | None = None
 
     def forward(
@@ -222,8 +229,13 @@ class DreamFormerModel(nn.Module):
             "memory_gate_min": float(self._last_gate_min),
             "memory_gate_max": float(self._last_gate_max),
             "memory_gate_reg_loss": float(self._last_gate_reg_loss),
+            "stm_raw_read_norm": float(self._last_stm_raw_read_norm),
+            "ltm_raw_read_norm": float(self._last_ltm_raw_read_norm),
             "stm_read_norm": float(self._last_stm_read_norm),
             "ltm_read_norm": float(self._last_ltm_read_norm),
+            "memory_mix_norm": float(self._last_memory_mix_norm),
+            "stm_fusion_scale": float(self._last_stm_fusion_scale),
+            "ltm_fusion_scale": float(self._last_ltm_fusion_scale),
         }
 
     def _inject_memory(self, hidden: torch.Tensor) -> torch.Tensor:
@@ -263,13 +275,25 @@ class DreamFormerModel(nn.Module):
         gate = torch.nan_to_num(gate, nan=0.0, posinf=1.0, neginf=0.0)
         stm_values = torch.nan_to_num(stm_values, nan=0.0, posinf=0.0, neginf=0.0)
         ltm_values = torch.nan_to_num(ltm_values, nan=0.0, posinf=0.0, neginf=0.0)
-        mixed = gate * ltm_values + (1.0 - gate) * stm_values
+        stm_raw_norm = self._mean_norm(stm_values)
+        ltm_raw_norm = self._mean_norm(ltm_values)
+        stm_values, ltm_values = self._balanced_memory_values(stm_values, ltm_values)
+        stm_scale = self._positive_parameter(self.stm_fusion_scale)
+        ltm_scale = self._positive_parameter(self.ltm_fusion_scale)
+        stm_contrib = stm_values * stm_scale
+        ltm_contrib = ltm_values * ltm_scale
+        mixed = gate * ltm_contrib + (1.0 - gate) * stm_contrib
         mixed = torch.nan_to_num(mixed, nan=0.0, posinf=0.0, neginf=0.0)
         self._last_gate_mean = float(gate.mean().detach().cpu().item())
         self._last_gate_min = float(gate.min().detach().cpu().item())
         self._last_gate_max = float(gate.max().detach().cpu().item())
-        self._last_stm_read_norm = float(stm_values.norm(dim=-1).mean().detach().cpu().item())
-        self._last_ltm_read_norm = float(ltm_values.norm(dim=-1).mean().detach().cpu().item())
+        self._last_stm_raw_read_norm = float(stm_raw_norm.detach().cpu().item())
+        self._last_ltm_raw_read_norm = float(ltm_raw_norm.detach().cpu().item())
+        self._last_stm_read_norm = float(self._mean_norm(stm_contrib).detach().cpu().item())
+        self._last_ltm_read_norm = float(self._mean_norm(ltm_contrib).detach().cpu().item())
+        self._last_memory_mix_norm = float(self._mean_norm(mixed).detach().cpu().item())
+        self._last_stm_fusion_scale = float(stm_scale.detach().cpu().item())
+        self._last_ltm_fusion_scale = float(ltm_scale.detach().cpu().item())
         self._last_gate_tensor = gate
 
         injected = self.memory_read_proj(mixed).reshape(batch, seq_len, -1)
@@ -360,3 +384,29 @@ class DreamFormerModel(nn.Module):
         bias_value = torch.logit(torch.tensor(init)).item()
         nn.init.normal_(self.memory_gate.weight, mean=0.0, std=1e-3)
         nn.init.constant_(self.memory_gate.bias, bias_value)
+
+    def _balanced_memory_values(
+        self,
+        stm_values: torch.Tensor,
+        ltm_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not self.config.normalize_memory_reads:
+            return stm_values, ltm_values
+        return self._normalize_memory_read(stm_values), self._normalize_memory_read(ltm_values)
+
+    def _normalize_memory_read(self, values: torch.Tensor) -> torch.Tensor:
+        normalized = F.normalize(values.float(), dim=-1, eps=self.config.memory_read_norm_eps)
+        return normalized.to(dtype=values.dtype)
+
+    @staticmethod
+    def _inverse_softplus(value: float) -> torch.Tensor:
+        value_tensor = torch.tensor(float(value))
+        return torch.log(torch.expm1(value_tensor))
+
+    @staticmethod
+    def _positive_parameter(parameter: torch.Tensor) -> torch.Tensor:
+        return F.softplus(parameter)
+
+    @staticmethod
+    def _mean_norm(values: torch.Tensor) -> torch.Tensor:
+        return values.float().norm(dim=-1).mean()

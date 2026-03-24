@@ -38,6 +38,10 @@ class DreamFormerConfig:
     memory_gate_target: float = 0.25
     memory_gate_band: float = 0.10
     memory_gate_regularization_weight: float = 0.02
+    normalize_memory_reads: bool = True
+    memory_read_norm_eps: float = 1e-6
+    stm_fusion_scale_init: float = 0.35
+    ltm_fusion_scale_init: float = 1.00
 
     def __post_init__(self) -> None:
         if self.vocab_size <= 1:
@@ -72,6 +76,12 @@ class DreamFormerConfig:
             raise ValueError("memory_gate_band must be in [0.0, 1.0]")
         if self.memory_gate_regularization_weight < 0.0:
             raise ValueError("memory_gate_regularization_weight must be >= 0.0")
+        if self.memory_read_norm_eps <= 0.0:
+            raise ValueError("memory_read_norm_eps must be > 0.0")
+        if self.stm_fusion_scale_init <= 0.0:
+            raise ValueError("stm_fusion_scale_init must be > 0.0")
+        if self.ltm_fusion_scale_init <= 0.0:
+            raise ValueError("ltm_fusion_scale_init must be > 0.0")
         if self.memory_layer_index < 0:
             self.memory_layer_index = self.n_layers + self.memory_layer_index
         if not 0 <= self.memory_layer_index < self.n_layers:

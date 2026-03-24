@@ -63,6 +63,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: the learned gate initialized near a regime that strongly favored STM and had no explicit pressure to explore LTM usage.
    - Fix: configurable gate-bias initialization, soft gate regularization toward a target range, and richer gate diagnostics in train/eval logs.
 
+9. Memory fusion imbalance after gate recovery:
+   - Cause: even with healthier gate values, raw STM retrieval norms remained much larger than LTM retrieval norms, so the fused memory path was still dominated by STM.
+   - Fix: optional per-source memory-read normalization, separate learned positive fusion scales for STM and LTM, tighter NREM threshold defaults for real-compute configs, and raw-vs-scaled memory diagnostics in logs.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.

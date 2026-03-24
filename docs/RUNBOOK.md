@@ -47,7 +47,7 @@ Expected console logs during training:
 
 - `experiment_resolved ...`
 - `run_start ...`
-- periodic `train step=...` lines with loss, replay size, STM occupancy, gate value, NREM selections, steps/sec, and ETA
+- periodic `train step=...` lines with loss, replay size, STM occupancy, gate value, raw/scaled STM and LTM read norms, fusion scales, NREM selections, steps/sec, and ETA
 - periodic `eval step=...` lines
 - `checkpoint_saved ...`
 - `best_checkpoint_updated ...`
@@ -61,7 +61,7 @@ Example:
 uv run python scripts/run_experiment.py --config configs/phase_a_real_compute.json
 ```
 
-This config is now the safer first-stage real-compute curriculum (`passkey`, shorter context, lower LR, softer consolidation).
+This config is now the safer first-stage real-compute curriculum (`passkey`, shorter context, lower LR, normalized memory fusion, and stricter consolidation).
 
 Harder retrieval follow-up:
 
@@ -127,7 +127,8 @@ uv run python scripts/report_results.py \
 - Start with a short run (for example 100 to 500 steps) and inspect metrics for:
   - loss moving down
   - `memory_gate_mean` not pinned at exactly 0 or 1 too early
-  - non-zero NREM selection when replay/NREM are enabled
+  - `stm_read_norm` and `ltm_read_norm` staying in the same rough order of magnitude
+  - `nrem_selection_rate` below saturation for long stretches of training
 
 ## 10. Known failure patterns and mitigations
 
