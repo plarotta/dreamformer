@@ -319,6 +319,8 @@ class Trainer:
             f"stm_live={int(metrics['stm_live_slots'])} "
             f"gate={metrics['memory_gate_mean']:.4f} "
             f"nrem_selected={metrics['nrem_selected']:.0f} "
+            f"nrem_rate={metrics['nrem_selection_rate']:.3f} "
+            f"ltm_norm={metrics['ltm_norm_mean']:.3f} "
             f"steps_per_sec={steps_per_sec:.2f} "
             f"elapsed_s={elapsed:.1f} "
             f"eta_s={eta_seconds:.1f}"
@@ -334,7 +336,8 @@ class Trainer:
             f"eval_loss={metrics['eval_loss']:.6f} "
             f"replay_size={int(metrics['replay_size'])} "
             f"stm_live={int(metrics['stm_live_slots'])} "
-            f"gate={metrics['memory_gate_mean']:.4f}"
+            f"gate={metrics['memory_gate_mean']:.4f} "
+            f"ltm_norm={metrics['ltm_norm_mean']:.3f}"
         )
         if "eval_query_acc" in metrics:
             message += f" eval_query_acc={metrics['eval_query_acc']:.4f}"

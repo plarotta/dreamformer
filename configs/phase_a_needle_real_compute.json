@@ -1,8 +1,8 @@
 {
-  "run_name": "phase_a_real_compute",
+  "run_name": "phase_a_needle_real_compute",
   "variant": "full_prioritized",
-  "task": "passkey",
-  "eval_task": "passkey",
+  "task": "needle",
+  "eval_task": "needle",
   "seed": 1234,
   "device": "cuda",
   "output_dir": "artifacts/runs",

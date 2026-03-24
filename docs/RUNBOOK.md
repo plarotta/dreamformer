@@ -26,6 +26,7 @@ Reference configs:
 
 - `configs/phase_a_smoke.json`
 - `configs/phase_a_real_compute.json`
+- `configs/phase_a_needle_real_compute.json`
 - `configs/char_lm_real_compute.json`
 - `configs/continual_real_compute.json`
 
@@ -58,6 +59,14 @@ Example:
 
 ```bash
 uv run python scripts/run_experiment.py --config configs/phase_a_real_compute.json
+```
+
+This config is now the safer first-stage real-compute curriculum (`passkey`, shorter context, lower LR, softer consolidation).
+
+Harder retrieval follow-up:
+
+```bash
+uv run python scripts/run_experiment.py --config configs/phase_a_needle_real_compute.json
 ```
 
 For text corpus LM:
