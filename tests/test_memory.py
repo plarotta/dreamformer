@@ -30,3 +30,19 @@ def test_ltm_update_increases_read_signal() -> None:
 
     assert before.shape == after.shape == (1, 2)
     assert after[0, 1] > before[0, 1]
+
+
+def test_stm_read_autocast_dtype_safety() -> None:
+    stm = EpisodicMemory(num_slots=8, key_dim=4, value_dim=3)
+    keys = torch.randn(4, 4)
+    values = torch.randn(4, 3)
+    stm.write(keys, values)
+
+    query = torch.randn(2, 4)
+    with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+        readout, weights = stm.read(query, top_k=2)
+
+    assert readout.shape == (2, 3)
+    assert weights.shape == (2, 8)
+    assert torch.isfinite(readout).all()
+    assert torch.isfinite(weights).all()

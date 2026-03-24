@@ -58,8 +58,18 @@ class EpisodicMemory(nn.Module):
 
         batch = query.shape[0]
         if self.live_slots == 0:
-            values = torch.zeros(batch, self.value_dim, device=query.device, dtype=query.dtype)
-            weights = torch.zeros(batch, self.num_slots, device=query.device, dtype=query.dtype)
+            values = torch.zeros(
+                batch,
+                self.value_dim,
+                device=query.device,
+                dtype=self.values.dtype,
+            )
+            weights = torch.zeros(
+                batch,
+                self.num_slots,
+                device=query.device,
+                dtype=torch.float32,
+            )
             return values, weights
 
         keys = F.normalize(self.keys.detach().to(query.device).clone(), dim=-1)
@@ -71,11 +81,12 @@ class EpisodicMemory(nn.Module):
         top_k = max(1, min(top_k, self.num_slots))
         if top_k < self.num_slots:
             top_values, top_indices = torch.topk(similarity, k=top_k, dim=-1)
-            sparse_weights = torch.softmax(top_values * temperature, dim=-1)
-            weights = torch.zeros_like(similarity)
+            # Keep sparse weights in fp32 to avoid dtype mismatches under autocast.
+            sparse_weights = torch.softmax((top_values * temperature).float(), dim=-1)
+            weights = torch.zeros(similarity.shape, device=query.device, dtype=sparse_weights.dtype)
             weights.scatter_(1, top_indices, sparse_weights)
         else:
-            weights = torch.softmax(similarity * temperature, dim=-1)
+            weights = torch.softmax((similarity * temperature).float(), dim=-1)
 
         memory_values = self.values.detach().to(query.device).clone()
         values = weights @ memory_values

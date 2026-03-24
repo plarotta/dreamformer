@@ -43,6 +43,10 @@ This document captures what is implemented, what is intentionally deferred, and 
    - Cause: using `__dict__` on dataclass with `slots=True`.
    - Fix: use `dataclasses.asdict`.
 
+4. Mixed-precision dtype mismatch in `STM.read`:
+   - Cause: under autocast, `weights` and `sparse_weights` could end up in different dtypes before `scatter_`.
+   - Fix: explicit fp32 softmax weights and fp32 scatter destination in `EpisodicMemory.read`.
+
 ## Readiness checklist
 
 - `uv run pytest` passes before each run.
